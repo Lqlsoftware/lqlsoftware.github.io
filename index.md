@@ -1,16 +1,29 @@
 ``` go
-// 自动选择网络适配器
-func getAdapter() *pcap.Interface {
-	adapters,err := pcap.FindAllDevs()
+// 监听TCP端口
+func listen(adapter *pcap.Interface, port layers.TCPPort) {
+	// 打开输入流
+	handle,err := pcap.OpenLive(adapter.Name, 65535, true, pcap.BlockForever)
+	tcp.SetSendChannel(handle)
+	defer handle.Close()
 	check(err)
-	idx := 0
-	for idx = range adapters {
-		if adapters[idx].Addresses != nil {
-			break
+
+	// 设置过滤器
+	err = handle.SetBPFFilter("tcp and dst port " + strconv.Itoa(int(port)) + " and ip dst " + getIPV4(adapter).String())
+	check(err)
+
+	// 建立数据源
+	src := gopacket.NewPacketSource(handle, handle.LinkType())
+	checkNil(src)
+	in := src.Packets()
+
+	// 监听启动
+	log.Print("Port: ", port, "\n\n")
+	for true {
+		select {
+		case packet := <-in:
+			// tcp包
+			tcp.PacketHandler(packet)
 		}
 	}
-	// 输出IPv4地址
-	log.Print("IPv4: ", getIPV4(&adapters[idx]))
-	return &adapters[idx]
 }
 ```
