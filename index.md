@@ -1,0 +1,16 @@
+``` go
+// 自动选择网络适配器
+func getAdapter() *pcap.Interface {
+	adapters,err := pcap.FindAllDevs()
+	check(err)
+	idx := 0
+	for idx = range adapters {
+		if adapters[idx].Addresses != nil {
+			break
+		}
+	}
+	// 输出IPv4地址
+	log.Print("IPv4: ", getIPV4(&adapters[idx]))
+	return &adapters[idx]
+}
+```
