@@ -33,11 +33,10 @@ func (req *HttpRequest)GetAllParamKey() []string
 func (rep *HttpResponse)Write(Data ...interface{})
 描述: 向response中写入数据 即返回数据
 	Data:		任意类型需要返回的数据
+```
 ``` go	
 func (rep *HttpResponse)SetHeader(key string, value string) {
 描述: 设置response的首部
 	key:		header的参数名
 	value:		header的参数值
 ```
-
-返回
