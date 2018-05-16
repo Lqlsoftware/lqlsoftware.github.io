@@ -41,46 +41,38 @@ func (rep *HttpResponse)SetHeader(key string, value string) {
 	value:		header的参数值
 ```
 ```go
-type HttpStream struct {
-	// file descriptor
-	fd 		*os.File
-	// file read offset
-	start	uint32
-	// file len
-	flen	uint32
-	// header content
-	hc 		*[]byte
-	// header length
-	// length
-	length	uint32
-	// buffer
-	content	*bytes.Buffer
-	buffer  *bytes.Buffer
-	// 0 - not init    1 - file    2 - []byte
-	flag	uint8
-}
-	// 申请固定capacity的内存
-	buffer := bytes.NewBuffer(make([]byte, 0, length))
-	buffer.WriteString(*rep.version)
-	buffer.WriteByte(32)
-	buffer.WriteString(strconv.Itoa(int(rep.stateCode)))
-	buffer.WriteByte(32)
-	buffer.WriteString(getStateName(rep.stateCode))
-	buffer.Write(CRLF)
 
-	// header
-	for key,value := range *rep.header {
-		buffer.WriteString(key)
-		buffer.Write(SEP)
-		buffer.WriteString(value)
-		buffer.Write(CRLF)
+func (hs *HttpStream)Output(start, end uint32) []byte {
+	// 重置Buffer
+	hs.buffer.Reset()
+
+	// 比头部长度小 输出头部
+	hcLen := uint32(len(*hs.hc))
+	if start < hcLen {
+		if end > hcLen {
+			hs.buffer.Write((*hs.hc)[start:hcLen])
+			start = hcLen
+		} else {
+			hs.buffer.Write((*hs.hc)[start:end])
+			return hs.buffer.Bytes()
+		}
 	}
-	buffer.Write(CRLF)
+	end = end - hcLen + hs.start
+	start = start - hcLen + hs.start
 
-	rep.contents.SetRawHeader(buffer.Bytes())
-	rep.contents.UpdateLen()
-	return rep.contents
-	
+	// 根据流类型输出
+	if hs.flag == 1 {
+		// file
+		data := make([]byte, end - start)
+		hs.fd.ReadAt(data, int64(start))
+		hs.buffer.Write(data)
+	} else if hs.flag == 2 {
+		// []byte
+		hs.buffer.Write(hs.content.Bytes()[start:end])
+	}
+	return hs.buffer.Bytes()
+}
+
 func DefaultGETHandler(request *HttpRequest, response *HttpResponse, phpPlugin *php.Plugin) {
 	// 检查URL
 	if *request.url == "/" {
