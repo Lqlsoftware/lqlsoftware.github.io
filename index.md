@@ -45,88 +45,238 @@ package main
 
 import (
 	"fmt"
-	"math"
-	"sort"
+	"os"
 )
 
-// 样本
-type Data struct {
-	// 特征值
-	x1		float64
-	x2 		float64
-	// class = 0 未分类
-	class	int
-}
-
-// 样本距离 采用曼哈顿距离
-func (data *Data)DistanceWith(data2 *Data) float64 {
-	return math.Abs(data.x1 - data2.x1) + math.Abs(data.x2 - data2.x2)
-}
-
-// w1类
-var (
-	X1 = Data{1,0,1}
-	X2 = Data{0,1,1}
-	X3 = Data{0,-1,1}
-)
-// w2类
-var (
-	X4 = Data{0,0,2}
-	X5 = Data{0,2,2}
-	X6 = Data{0,-2,2}
-	X7 = Data{-2,0,2}
-)
-// 训练数据集
-var trainData = []Data{X1,X2,X3,X4,X5,X6,X7}
-
-// 测试数据
-var X = Data{0.2,0.3, 0}
-
-// KNN分类
-func KNNClassfiy(trainData []Data, target *Data, k int) {
-	// 得到前k个最小的距离
-	distance := getMinDistance(trainData, *target, k)
-
-	// 计数器计数
-	counter := make(map[int]int)
-	for _,d := range distance {
-		counter[d[1].(int)]++
-	}
-
-	// 测试数据分入计数最多的类
-	for class, count := range counter {
-		if count > counter[target.class] {
-			target.class = class
-		}
-	}
-}
-
-// 计算前k个最小的距离
-func getMinDistance(data []Data, target Data, k int) [][]interface{} {
-	// 边界条件
-	if k <= 0 {
-		return [][]interface{}{}
-	} else if k > len(data) {
-		k = len(data)
-	}
-
-	// 计算所有样本与测试数据的距离
-	distance := make([][]interface{}, len(data))
-	for i,sample := range data {
-		distance[i] = []interface{}{target.DistanceWith(&sample),sample.class}
-	}
-
-	// 递增排序
-	sort.Slice(distance, func(i, j int) bool {
-		return distance[i][0].(float64) < distance[j][0].(float64)
-	})
-
-	// 取前k个
-	return distance[:k]
-}
+// Buffer大小定义
+const InputBufferSize = 80
 
 func main() {
-	KNNClassfiy(trainData, &X, 6)
-	fmt.Println(X.class)
+	// input
+	Buffer := NewBuffer()
+	fmt.Println("Input a string (end with '#'):")
+	Buffer.Read(os.Stdin)
+
+	// process
+	res, err := LexicalAnalysis(Buffer)
+	if err != nil {
+		fmt.Print(&res[0])
+		fmt.Println(err.Error())
+		return
+	}
+
+	// output
+	Print(res)
+}
+
+// 是否为字母
+func isCharacter(char byte) bool {
+	return (char <= 'z') && (char >= 'a') || (char <= 'Z') && (char >= 'A')
+}
+
+// 是否为数字
+func isNumber(char byte) bool {
+	return (char >= '0') && (char <= '9')
+}
+
+package main
+
+import (
+	"errors"
+)
+
+// 缓冲区大小定义
+const TokenBufferSize = 8
+
+// 关键字及其Syntax值
+var keywords = map[string]int{
+	"begin": 	1,
+	"if": 		2,
+	"then": 	3,
+	"while": 	4,
+	"do": 		5,
+	"end": 		6,
+}
+
+// 词法分析
+func LexicalAnalysis(buffer *CharBuffer) ([]Tuple, error) {
+	var lexicons []Tuple
+	var lexicon = &Tuple{Syntax:-1}
+	for lexicon.Syntax != 0 {
+		lexicon = nextLexicon(buffer)
+		if !lexicon.Valid() {
+			return []Tuple{*lexicon}, errors.New("ERROR: Wrong character ")
+		}
+		lexicons = append(lexicons, *lexicon)
+	}
+	return lexicons, nil
+}
+
+// 获取下一个词
+func nextLexicon(buffer *CharBuffer) *Tuple {
+	res := &Tuple {
+		Token: make([]byte, 0, TokenBufferSize),
+		Syntax: 0,
+	}
+	// 去除 ' ' 和 '\n'
+	for buffer.Peak() == ' ' || buffer.Peak() == '\n' {
+		buffer.Pop()
+	}
+	// 处理
+	if isCharacter(buffer.Peak()) {
+		// 字母及数字 letter(letter|digit)*
+		for isCharacter(buffer.Peak()) || isNumber(buffer.Peak()) {
+			res.Token = append(res.Token, buffer.Pop())
+		}
+		if val, ok := keywords[string(res.Token)]; ok {
+			// 关键字
+			res.Syntax = val
+		} else {
+			// 非关键字
+			res.Syntax = 10
+		}
+	} else if isNumber(buffer.Peak()) {
+		// 数字
+		var number = int(buffer.Pop() - '0')
+		for isNumber(buffer.Peak()) {
+			number = number * 10 + int(buffer.Pop() - '0')
+		}
+		res.Number = number
+		res.Syntax = 11
+	} else {
+		res.Token = append(res.Token, buffer.Peak())
+		// 符号
+		switch buffer.Pop() {
+		case '+':
+			res.Syntax = 13
+		case '-':
+			res.Syntax = 14
+		case '*':
+			res.Syntax = 15
+		case '/':
+			res.Syntax = 16
+		case ':':
+			if buffer.Peak() == '=' {
+				// :=
+				res.Token = append(res.Token, buffer.Pop())
+				res.Syntax = 18
+			} else {
+				// :
+				res.Syntax = 17
+			}
+		case '<':
+			if buffer.Peak() == '=' {
+				// <=
+				res.Token = append(res.Token, buffer.Pop())
+				res.Syntax = 22
+			} else if buffer.Peak() == '>' {
+				// <>
+				res.Token = append(res.Token, buffer.Pop())
+				res.Syntax = 21
+			} else {
+				// <
+				res.Syntax = 20
+			}
+		case '>':
+			if buffer.Peak() == '=' {
+				// >=
+				res.Token = append(res.Token, buffer.Pop())
+				res.Syntax = 24
+			} else {
+				// >
+				res.Syntax = 23
+			}
+		case '=':
+			res.Syntax = 25
+		case ';':
+			res.Syntax = 26
+		case '(':
+			res.Syntax = 27
+		case ')':
+			res.Syntax = 28
+		case '#':
+			res.Syntax = 0
+		default:
+			res.Syntax = -1
+		}
+	}
+	return res
+}
+
+package main
+
+import "fmt"
+
+// 二元组
+type Tuple struct {
+	Token	[]byte
+	Number 	int
+	Syntax 	int
+}
+
+// Syntax是否有效
+func (tuple *Tuple)Valid() bool {
+	return tuple.Syntax != -1
+}
+
+// 二元组字符串输出
+func (tuple *Tuple)String() string {
+	if tuple.Syntax == 11 {
+		return fmt.Sprintf("│ %-10d│ %3d │", tuple.Number, tuple.Syntax)
+	}
+	return fmt.Sprintf("│ %-10s│ %3d │", string(tuple.Token), tuple.Syntax)
+}
+
+// 输出二元组列表
+func Print(tuples []Tuple) {
+	fmt.Println("┌───────────┬─────┐")
+	fmt.Println("│   token   │ syn │")
+	fmt.Println("├───────────┼─────┤")
+	for _,v := range tuples {
+		fmt.Println(&v)
+	}
+	fmt.Println("└───────────┴─────┘")
+}
+
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+// 字符缓冲区
+type CharBuffer struct {
+	buffer 	[]byte
+	idx		int
+}
+
+// 新建字符缓冲区
+func NewBuffer() *CharBuffer {
+	return &CharBuffer{
+		buffer:	make([]byte, 0, InputBufferSize),
+		idx:	0,
+	}
+}
+
+// 从标准输入中读取字符
+func (charBuffer *CharBuffer)Read(in *os.File) {
+	var ch byte
+	for ch != '#' {
+		fmt.Fscanf(in, "%c", &ch)
+		charBuffer.buffer = append(charBuffer.buffer, ch)
+	}
+}
+
+// 从缓冲区读取一个字符 读取位置后移1个字符
+func (charBuffer *CharBuffer)Pop() byte {
+	char := charBuffer.buffer[charBuffer.idx]
+	charBuffer.idx++
+	return char
+}
+
+// 从缓冲区读取一个字符
+func (charBuffer *CharBuffer)Peak() byte {
+	return charBuffer.buffer[charBuffer.idx]
 }
 ```
