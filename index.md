@@ -279,4 +279,117 @@ func (charBuffer *CharBuffer)Pop() byte {
 func (charBuffer *CharBuffer)Peak() byte {
 	return charBuffer.buffer[charBuffer.idx]
 }
+
+package main
+
+import "fmt"
+
+// lr递归下降分析
+// <程序> ::= begin<语句串>end
+func lrParser(buffer *CharBuffer) {
+	// 错误处理 recover panic
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println("Failed:", err)
+		}
+	}()
+
+	// begin nextLexicon为实验一中的词法分析切分函数
+	current := nextLexicon(buffer)
+	if current.Syntax != 1 {
+		panic(fmt.Sprintf("Expect 'begin' before '%s'(%d)\n", current.Token, buffer.idx))
+	}
+
+	// <语句串>
+	*current = *nextLexicon(buffer)
+	stringStatement(current, buffer)
+
+	// end #
+	if current.Syntax != 6 || nextLexicon(buffer).Syntax != 0 {
+		panic(fmt.Sprintf("Expect 'end' before '%s'(%d)\n", current.Token, buffer.idx))
+	}
+
+	fmt.Println("Parser Success!")
+}
+
+// 语句串处理子程序
+// <语句串> ::= <语句>{;<语句>}
+func stringStatement(current *Tuple, buffer *CharBuffer) {
+	// <语句>
+	statement(current, buffer)
+
+	// ;
+	for current.Syntax == 26 {
+		// <语句>
+		*current = *nextLexicon(buffer)
+		statement(current, buffer)
+	}
+}
+
+// 语句处理子程序
+// <语句> ::= <赋值语句> ::= ID:=<表达式>
+func statement(current *Tuple, buffer *CharBuffer) {
+	// ID
+	if current.Syntax != 10 {
+		panic(fmt.Sprintf("Expect Identity before '%s'(%d)\n", current.Token, buffer.idx))
+	}
+
+	// :=
+	*current = *nextLexicon(buffer)
+	if current.Syntax != 18 {
+		panic(fmt.Sprintf("Expect ':=' before '%s'(%d)\n", current.Token, buffer.idx))
+	}
+
+	// <表达式>
+	*current = *nextLexicon(buffer)
+	expression(current, buffer)
+}
+
+// 表达式处理子程序
+// <表达式> ::= <项>{+<项> | -<项>}
+func expression(current *Tuple, buffer *CharBuffer) {
+	// <项>
+	term(current, buffer)
+
+	// +<项> | -<项>
+	for (current.Syntax == 13) || (current.Syntax == 14) {
+		*current = *nextLexicon(buffer)
+		term(current, buffer)
+	}
+}
+
+// 项处理子程序
+// <项> ::= <因子>{*<因子> | /<因子>
+func term(current *Tuple, buffer *CharBuffer) {
+	// <因子>
+	factor(current, buffer)
+
+	// *<因子> | /<因子
+	for (current.Syntax == 15) || (current.Syntax == 16) {
+		*current = *nextLexicon(buffer)
+		factor(current, buffer)
+	}
+}
+
+// 因子处理子程序
+// <因子> ::= ID | NUM | (<表达式>)
+func factor(current *Tuple, buffer *CharBuffer) {
+	if (current.Syntax == 10) || (current.Syntax == 11) {
+		// ID | NUM
+		*current = *nextLexicon(buffer)
+	} else if current.Syntax == 27 {
+		// (
+		// <表达式>
+		*current = *nextLexicon(buffer)
+		expression(current, buffer)
+
+		// )
+		if current.Syntax != 28 {
+			panic(fmt.Sprintf("Expect ')' before '%s'(%d)\n", current.Token, buffer.idx))
+		}
+		*current = *nextLexicon(buffer)
+	} else {
+		panic(fmt.Sprintf("Expect Identity or Number or '(' before '%s'(%d)\n", current.Token, buffer.idx))
+	}
+}
 ```
